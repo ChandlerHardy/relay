@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dispatch</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <h1>dispatch</h1>
+        <button id="new-btn" title="New Session">+</button>
+      </div>
+      <ul id="session-list"></ul>
+    </aside>
+    <main id="main">
+      <div id="empty-state">
+        <p>No session selected</p>
+        <p class="dim">Click + to spawn a new Claude Code session</p>
+      </div>
+      <div id="session-view" hidden>
+        <div id="session-header">
+          <div>
+            <span id="session-status" class="status-badge"></span>
+            <span id="session-dir" class="dim"></span>
+          </div>
+          <button id="kill-btn" class="danger" title="Kill Session">Stop</button>
+        </div>
+        <div id="session-prompt"></div>
+        <pre id="session-output"></pre>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="new-dialog">
+    <form id="new-form">
+      <h2>New Session</h2>
+      <label>
+        Project Directory
+        <input type="text" id="input-dir" placeholder="/path/to/project" required>
+      </label>
+      <label>
+        Prompt
+        <textarea id="input-prompt" rows="6" placeholder="What should Claude work on?" required></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="cancel-btn">Cancel</button>
+        <button type="submit">Launch</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
