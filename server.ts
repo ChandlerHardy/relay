@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import { readFile, readdir } from "fs/promises";
+import { readFile, readdir, writeFile, mkdir } from "fs/promises";
 import { join, extname } from "path";
 import { homedir } from "os";
 import { randomUUID } from "crypto";
@@ -9,6 +9,8 @@ import * as pty from "node-pty";
 const PORT = 3847;
 const REPOS_DIR = join(homedir(), "repos");
 const PUBLIC_DIR = join(import.meta.dirname, "public");
+const DATA_DIR = join(homedir(), ".relay");
+const SESSIONS_FILE = join(DATA_DIR, "sessions.json");
 
 interface Session {
   id: string;
@@ -23,6 +25,46 @@ interface Session {
 
 const sessions = new Map<string, Session>();
 const wsClients = new Set<WebSocket>();
+
+interface PersistedSession {
+  id: string;
+  projectDir: string;
+  prompt: string;
+  status: "running" | "completed" | "failed";
+  output: string[];
+  createdAt: string;
+  exitCode: number | null;
+}
+
+async function saveSessions() {
+  const data: PersistedSession[] = [...sessions.values()].map((s) => ({
+    id: s.id,
+    projectDir: s.projectDir,
+    prompt: s.prompt,
+    status: s.status === "running" ? "failed" : s.status, // running sessions can't survive restart
+    output: s.output,
+    createdAt: s.createdAt,
+    exitCode: s.exitCode,
+  }));
+  await mkdir(DATA_DIR, { recursive: true });
+  await writeFile(SESSIONS_FILE, JSON.stringify(data, null, 2));
+}
+
+async function loadSessions() {
+  try {
+    const raw = await readFile(SESSIONS_FILE, "utf-8");
+    const data: PersistedSession[] = JSON.parse(raw);
+    for (const s of data) {
+      sessions.set(s.id, {
+        ...s,
+        ptyProcess: null,
+      });
+    }
+    console.log(`  loaded ${data.length} saved session(s)`);
+  } catch {
+    // no saved sessions yet
+  }
+}
 
 function broadcast(data: unknown) {
   const msg = JSON.stringify(data);
@@ -47,9 +89,10 @@ function serializeSession(s: Session) {
 
 function stripAnsi(str: string): string {
   return str
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
     .replace(/\x1b\][^\x07]*\x07/g, "")
-    .replace(/\x1b\[[\?0-9;]*[a-zA-Z]/g, "")
+    .replace(/\x1b\[<[a-zA-Z]/g, "")
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
     .replace(/\]0;[^\x07\x1b]*/g, "")
     .replace(/\]9;[^\x07\x1b]*/g, "");
 }
@@ -111,9 +154,11 @@ function createSession(projectDir: string, prompt: string): Session {
       status: session.status,
       exitCode,
     });
+    saveSessions();
   });
 
   sessions.set(id, session);
+  saveSessions();
   return session;
 }
 
@@ -200,6 +245,7 @@ const httpServer = createServer(async (req, res) => {
     session.status = "failed";
     session.ptyProcess = null;
     broadcast({ type: "status", sessionId: killMatch[1], status: "failed" });
+    saveSessions();
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -226,6 +272,8 @@ wss.on("connection", (ws) => {
   ws.on("close", () => wsClients.delete(ws));
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`\n  relay running at http://localhost:${PORT}\n`);
+loadSessions().then(() => {
+  httpServer.listen(PORT, () => {
+    console.log(`  relay running at http://localhost:${PORT}\n`);
+  });
 });
