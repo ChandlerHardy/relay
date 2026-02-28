@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>dispatch</title>
+  <title>relay</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div id="app">
     <aside id="sidebar">
       <div class="sidebar-header">
-        <h1>dispatch</h1>
+        <h1>relay</h1>
         <button id="new-btn" title="New Session">+</button>
       </div>
       <ul id="session-list"></ul>
@@ -39,7 +39,9 @@
       <h2>New Session</h2>
       <label>
         Project Directory
-        <input type="text" id="input-dir" placeholder="/path/to/project" required>
+        <select id="input-dir" required>
+          <option value="" disabled selected>Select a project...</option>
+        </select>
       </label>
       <label>
         Prompt

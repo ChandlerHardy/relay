@@ -1,10 +1,14 @@
 {
-  "name": "dispatch",
+  "name": "relay",
   "version": "0.1.0",
   "description": "Spawn and monitor autonomous Claude Code sessions",
   "scripts": {
-    "start": "bun run server.ts",
-    "dev": "bun --watch run server.ts"
+    "start": "node server.ts",
+    "dev": "node --watch server.ts"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "ws": "^8.19.0"
+  }
 }

@@ -108,6 +108,21 @@ function renderSession() {
   killBtn.hidden = s.status !== "running";
 }
 
+// Load projects into dropdown
+async function loadProjects() {
+  const res = await fetch("/api/projects");
+  const projects = await res.json();
+  const select = document.getElementById("input-dir");
+  for (const p of projects) {
+    const opt = document.createElement("option");
+    opt.value = p.path;
+    opt.textContent = p.name;
+    select.appendChild(opt);
+  }
+}
+
+loadProjects();
+
 // New session
 newBtn.onclick = () => newDialog.showModal();
 cancelBtn.onclick = () => newDialog.close();

@@ -1,6 +1,14 @@
-import { spawn, type ChildProcess } from "child_process";
-import { join } from "path";
+import { createServer } from "http";
+import { readFile, readdir } from "fs/promises";
+import { join, extname } from "path";
+import { homedir } from "os";
 import { randomUUID } from "crypto";
+import { WebSocketServer, WebSocket } from "ws";
+import * as pty from "node-pty";
+
+const PORT = 3847;
+const REPOS_DIR = join(homedir(), "repos");
+const PUBLIC_DIR = join(import.meta.dirname, "public");
 
 interface Session {
   id: string;
@@ -8,27 +16,19 @@ interface Session {
   prompt: string;
   status: "running" | "completed" | "failed";
   output: string[];
-  process: ChildProcess | null;
+  ptyProcess: pty.IPty | null;
   createdAt: string;
   exitCode: number | null;
 }
 
 const sessions = new Map<string, Session>();
-const wsClients = new Set<ServerWebSocket<unknown>>();
-
-type ServerWebSocket<T> = {
-  send(data: string): void;
-  close(): void;
-  data: T;
-};
+const wsClients = new Set<WebSocket>();
 
 function broadcast(data: unknown) {
   const msg = JSON.stringify(data);
   for (const ws of wsClients) {
-    try {
+    if (ws.readyState === WebSocket.OPEN) {
       ws.send(msg);
-    } catch {
-      wsClients.delete(ws);
     }
   }
 }
@@ -45,6 +45,15 @@ function serializeSession(s: Session) {
   };
 }
 
+function stripAnsi(str: string): string {
+  return str
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(/\x1b\][^\x07]*\x07/g, "")
+    .replace(/\x1b\[[\?0-9;]*[a-zA-Z]/g, "")
+    .replace(/\]0;[^\x07\x1b]*/g, "")
+    .replace(/\]9;[^\x07\x1b]*/g, "");
+}
+
 function createSession(projectDir: string, prompt: string): Session {
   const id = randomUUID();
   const session: Session = {
@@ -53,138 +62,170 @@ function createSession(projectDir: string, prompt: string): Session {
     prompt,
     status: "running",
     output: [],
-    process: null,
+    ptyProcess: null,
     createdAt: new Date().toISOString(),
     exitCode: null,
   };
 
-  const proc = spawn("claude", ["-p", prompt, "--output-format", "text"], {
-    cwd: projectDir,
-    env: { ...process.env, FORCE_COLOR: "0" },
-    shell: true,
+  const cleanEnv: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && k !== "CLAUDECODE" && k !== "CLAUDE_CODE") {
+      cleanEnv[k] = v;
+    }
+  }
+  cleanEnv.FORCE_COLOR = "0";
+  cleanEnv.TERM = "dumb";
+
+  const claudePath =
+    process.env.CLAUDE_PATH || join(homedir(), ".local", "bin", "claude");
+
+  const ptyProc = pty.spawn(
+    claudePath,
+    ["-p", prompt, "--output-format", "text"],
+    {
+      name: "dumb",
+      cols: 120,
+      rows: 40,
+      cwd: projectDir,
+      env: cleanEnv,
+    }
+  );
+
+  session.ptyProcess = ptyProc;
+
+  ptyProc.onData((data: string) => {
+    const clean = stripAnsi(data);
+    if (clean.trim()) {
+      session.output.push(clean);
+      broadcast({ type: "output", sessionId: id, data: clean });
+    }
   });
 
-  session.process = proc;
-
-  proc.stdout?.on("data", (data: Buffer) => {
-    const text = data.toString();
-    session.output.push(text);
-    broadcast({ type: "output", sessionId: id, data: text });
-  });
-
-  proc.stderr?.on("data", (data: Buffer) => {
-    const text = data.toString();
-    session.output.push(text);
-    broadcast({ type: "output", sessionId: id, data: text });
-  });
-
-  proc.on("close", (code: number | null) => {
-    session.status = code === 0 ? "completed" : "failed";
-    session.exitCode = code;
-    session.process = null;
+  ptyProc.onExit(({ exitCode }: { exitCode: number }) => {
+    session.status = exitCode === 0 ? "completed" : "failed";
+    session.exitCode = exitCode;
+    session.ptyProcess = null;
     broadcast({
       type: "status",
       sessionId: id,
       status: session.status,
-      exitCode: code,
+      exitCode,
     });
-  });
-
-  proc.on("error", (err: Error) => {
-    session.status = "failed";
-    session.output.push(`Error: ${err.message}`);
-    session.process = null;
-    broadcast({
-      type: "output",
-      sessionId: id,
-      data: `Error: ${err.message}`,
-    });
-    broadcast({ type: "status", sessionId: id, status: "failed" });
   });
 
   sessions.set(id, session);
   return session;
 }
 
-const server = Bun.serve({
-  port: 3847,
-  async fetch(req, server) {
-    const url = new URL(req.url);
+const MIME: Record<string, string> = {
+  ".html": "text/html",
+  ".css": "text/css",
+  ".js": "application/javascript",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+};
 
-    if (url.pathname === "/ws") {
-      if (server.upgrade(req)) return undefined;
-      return new Response("WebSocket upgrade failed", { status: 500 });
+const httpServer = createServer(async (req, res) => {
+  const url = new URL(req.url!, `http://localhost:${PORT}`);
+
+  // API: list projects
+  if (url.pathname === "/api/projects" && req.method === "GET") {
+    try {
+      const entries = await readdir(REPOS_DIR, { withFileTypes: true });
+      const dirs = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .map((e) => ({ name: e.name, path: join(REPOS_DIR, e.name) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(dirs));
+    } catch {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("[]");
     }
+    return;
+  }
 
-    // API: list sessions
-    if (url.pathname === "/api/sessions" && req.method === "GET") {
-      const list = [...sessions.values()].map(serializeSession);
-      return Response.json(list);
+  // API: list sessions
+  if (url.pathname === "/api/sessions" && req.method === "GET") {
+    const list = [...sessions.values()].map(serializeSession);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(list));
+    return;
+  }
+
+  // API: create session
+  if (url.pathname === "/api/sessions" && req.method === "POST") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const parsed = JSON.parse(body) as {
+      projectDir?: string;
+      prompt?: string;
+    };
+    if (!parsed.projectDir || !parsed.prompt) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "projectDir and prompt required" }));
+      return;
     }
+    const session = createSession(parsed.projectDir, parsed.prompt);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(serializeSession(session)));
+    return;
+  }
 
-    // API: create session
-    if (url.pathname === "/api/sessions" && req.method === "POST") {
-      const body = (await req.json()) as {
-        projectDir?: string;
-        prompt?: string;
-      };
-      if (!body.projectDir || !body.prompt) {
-        return Response.json(
-          { error: "projectDir and prompt required" },
-          { status: 400 }
-        );
-      }
-      const session = createSession(body.projectDir, body.prompt);
-      return Response.json(serializeSession(session));
+  // API: get session output
+  const outputMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/output$/);
+  if (outputMatch && req.method === "GET") {
+    const session = sessions.get(outputMatch[1]);
+    if (!session) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
     }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ output: session.output.join("") }));
+    return;
+  }
 
-    // API: get session output
-    if (
-      url.pathname.match(/^\/api\/sessions\/[^/]+\/output$/) &&
-      req.method === "GET"
-    ) {
-      const id = url.pathname.split("/")[3];
-      const session = sessions.get(id);
-      if (!session)
-        return Response.json({ error: "not found" }, { status: 404 });
-      return Response.json({ output: session.output.join("") });
+  // API: kill session
+  const killMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+  if (killMatch && req.method === "DELETE") {
+    const session = sessions.get(killMatch[1]);
+    if (!session) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
     }
+    if (session.ptyProcess) session.ptyProcess.kill();
+    session.status = "failed";
+    session.ptyProcess = null;
+    broadcast({ type: "status", sessionId: killMatch[1], status: "failed" });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
 
-    // API: kill session
-    if (
-      url.pathname.match(/^\/api\/sessions\/[^/]+$/) &&
-      req.method === "DELETE"
-    ) {
-      const id = url.pathname.split("/").pop()!;
-      const session = sessions.get(id);
-      if (!session)
-        return Response.json({ error: "not found" }, { status: 404 });
-      if (session.process) session.process.kill("SIGTERM");
-      session.status = "failed";
-      session.process = null;
-      broadcast({ type: "status", sessionId: id, status: "failed" });
-      return Response.json({ ok: true });
-    }
-
-    // Static files
-    const filePath = url.pathname === "/" ? "/index.html" : url.pathname;
-    const file = Bun.file(join(import.meta.dir, "public", filePath));
-    if (await file.exists()) {
-      return new Response(file);
-    }
-
-    return new Response("Not found", { status: 404 });
-  },
-
-  websocket: {
-    open(ws) {
-      wsClients.add(ws as unknown as ServerWebSocket<unknown>);
-    },
-    close(ws) {
-      wsClients.delete(ws as unknown as ServerWebSocket<unknown>);
-    },
-    message() {},
-  },
+  // Static files
+  const filePath = url.pathname === "/" ? "/index.html" : url.pathname;
+  const fullPath = join(PUBLIC_DIR, filePath);
+  try {
+    const data = await readFile(fullPath);
+    const mime = MIME[extname(fullPath)] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": mime });
+    res.end(data);
+  } catch {
+    res.writeHead(404);
+    res.end("Not found");
+  }
 });
 
-console.log(`\n  dispatch running at http://localhost:${server.port}\n`);
+const wss = new WebSocketServer({ server: httpServer });
+
+wss.on("connection", (ws) => {
+  wsClients.add(ws);
+  ws.on("close", () => wsClients.delete(ws));
+});
+
+httpServer.listen(PORT, () => {
+  console.log(`\n  relay running at http://localhost:${PORT}\n`);
+});

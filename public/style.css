@@ -117,11 +117,19 @@ body {
   font-size: 14px;
 }
 
+#empty-state[hidden] {
+  display: none !important;
+}
+
 #session-view {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+#session-view[hidden] {
+  display: none !important;
 }
 
 #session-header {
@@ -215,7 +223,7 @@ dialog label {
   margin-bottom: 12px;
 }
 
-dialog input, dialog textarea {
+dialog select, dialog input, dialog textarea {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -229,7 +237,7 @@ dialog input, dialog textarea {
   resize: vertical;
 }
 
-dialog input:focus, dialog textarea:focus {
+dialog select:focus, dialog input:focus, dialog textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
