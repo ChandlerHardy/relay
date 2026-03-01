@@ -41,6 +41,11 @@ export default function SessionList() {
             <StatusDot status={session.status} />
             <span>{session.projectDir.split("/").pop()}</span>
             <span>{timeAgo(session.createdAt)}</span>
+            {session.role && (
+              <span className={`role-badge role-${session.role}`}>
+                {session.role}
+              </span>
+            )}
           </span>
         </li>
       ))}
