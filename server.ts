@@ -8,7 +8,7 @@ import * as pty from "node-pty";
 
 const PORT = 3847;
 const REPOS_DIR = join(homedir(), "repos");
-const PUBLIC_DIR = join(import.meta.dirname, "public");
+const DIST_DIR = join(import.meta.dirname, "dist");
 const DATA_DIR = join(homedir(), ".relay");
 const SESSIONS_FILE = join(DATA_DIR, "sessions.json");
 const SKILLS_DIR = join(homedir(), ".claude", "skills");
@@ -343,7 +343,7 @@ const httpServer = createServer(async (req, res) => {
 
   // Static files
   const filePath = url.pathname === "/" ? "/index.html" : url.pathname;
-  const fullPath = join(PUBLIC_DIR, filePath);
+  const fullPath = join(DIST_DIR, filePath);
   try {
     const data = await readFile(fullPath);
     const mime = MIME[extname(fullPath)] || "application/octet-stream";
