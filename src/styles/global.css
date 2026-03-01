@@ -377,3 +377,333 @@ dialog select:focus, dialog input:focus, dialog textarea:focus {
 #dialog-context .context-pre {
   max-height: 100px;
 }
+
+/* Sidebar sections */
+.sidebar-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.sidebar-section-label {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 16px;
+}
+
+/* Assignment list */
+.assignment-list {
+  list-style: none;
+  overflow-y: auto;
+}
+
+.assignment-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.assignment-item:hover { background: var(--bg3); }
+.assignment-item.active { background: var(--bg3); border-left: 2px solid var(--accent); }
+
+.assignment-goal {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assignment-meta {
+  font-size: 11px;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assignment-status-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.new-assignment-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.new-assignment-btn:hover { background: var(--border); }
+
+/* Autonomy fieldset in dialog */
+.autonomy-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.autonomy-fieldset legend {
+  font-size: 13px;
+  color: var(--dim);
+  padding: 0 4px;
+}
+
+.radio-label {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 4px !important;
+}
+
+.radio-label input[type="radio"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.radio-label span strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Assignment view */
+#assignment-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.assignment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+
+.assignment-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assignment-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assignment-goal-section {
+  padding: 12px 20px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* Progress bar */
+.progress-bar-container {
+  height: 3px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--green);
+  transition: width 0.3s ease;
+  min-width: 0;
+}
+
+/* Assignment sections */
+.assignment-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+/* Task rows */
+.task-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.task-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.task-row-main:hover {
+  background: var(--bg3);
+}
+
+.task-description {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-expand-icon {
+  color: var(--dim);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.retry-count {
+  font-size: 11px;
+  color: var(--yellow);
+  flex-shrink: 0;
+}
+
+.task-row-details {
+  padding: 8px 12px 10px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.task-evaluation {
+  margin-bottom: 4px;
+}
+
+.task-sessions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.session-id-link {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 11px;
+  padding: 1px 4px;
+  background: var(--bg3);
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+/* Role badges */
+.role-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg3);
+  flex-shrink: 0;
+}
+
+/* Autonomy toggle button */
+.autonomy-toggle {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
+.autonomy-toggle:hover {
+  background: rgba(88, 166, 255, 0.1);
+}
+
+/* Decision cards */
+.decision-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+
+.decision-question {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.decision-context {
+  font-size: 12px;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.decision-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.decision-options button {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  border-radius: 6px;
+}
+
+.decision-options button:hover {
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.decision-options button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Assignment summary */
+.assignment-summary {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--text);
+}

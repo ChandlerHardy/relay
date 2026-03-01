@@ -2,13 +2,14 @@ import { useStore } from "../store";
 
 export default function EmptyState() {
   const activeSessionId = useStore((s) => s.activeSessionId);
+  const activeAssignmentId = useStore((s) => s.activeAssignmentId);
 
-  if (activeSessionId) return null;
+  if (activeSessionId || activeAssignmentId) return null;
 
   return (
     <div id="empty-state">
-      <p>No session selected</p>
-      <p className="dim">Click + to spawn a new Claude Code session</p>
+      <p>Nothing selected</p>
+      <p className="dim">Create an assignment or spawn a session to get started</p>
     </div>
   );
 }
