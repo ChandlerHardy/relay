@@ -23,6 +23,7 @@ interface Session {
   ptyProcess: pty.IPty | null;
   createdAt: string;
   exitCode: number | null;
+  context: ProjectContext | null;
 }
 
 const sessions = new Map<string, Session>();
@@ -36,6 +37,7 @@ interface PersistedSession {
   output: string[];
   createdAt: string;
   exitCode: number | null;
+  context: ProjectContext | null;
 }
 
 async function saveSessions() {
@@ -47,6 +49,7 @@ async function saveSessions() {
     output: s.output,
     createdAt: s.createdAt,
     exitCode: s.exitCode,
+    context: s.context,
   }));
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(SESSIONS_FILE, JSON.stringify(data, null, 2));
@@ -86,6 +89,7 @@ function serializeSession(s: Session) {
     outputLength: s.output.length,
     createdAt: s.createdAt,
     exitCode: s.exitCode,
+    context: s.context,
   };
 }
 
@@ -137,6 +141,12 @@ interface ConfigSummary {
   hooks: string[];
 }
 
+interface ProjectContext {
+  claudeMd: string | null;
+  skills: SkillInfo[];
+  config: ConfigSummary;
+}
+
 async function parseConfig(): Promise<ConfigSummary> {
   try {
     const raw = await readFile(SETTINGS_FILE, "utf-8");
@@ -151,7 +161,7 @@ async function parseConfig(): Promise<ConfigSummary> {
 let cachedSkills: SkillInfo[] | null = null;
 let cachedConfig: ConfigSummary | null = null;
 
-function createSession(projectDir: string, prompt: string): Session {
+function createSession(projectDir: string, prompt: string, context: ProjectContext | null): Session {
   const id = randomUUID();
   const session: Session = {
     id,
@@ -162,6 +172,7 @@ function createSession(projectDir: string, prompt: string): Session {
     ptyProcess: null,
     createdAt: new Date().toISOString(),
     exitCode: null,
+    context,
   };
 
   const cleanEnv: Record<string, string> = {};
@@ -283,13 +294,14 @@ const httpServer = createServer(async (req, res) => {
     const parsed = JSON.parse(body) as {
       projectDir?: string;
       prompt?: string;
+      context?: ProjectContext | null;
     };
     if (!parsed.projectDir || !parsed.prompt) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "projectDir and prompt required" }));
       return;
     }
-    const session = createSession(parsed.projectDir, parsed.prompt);
+    const session = createSession(parsed.projectDir, parsed.prompt, parsed.context ?? null);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(serializeSession(session)));
     return;
