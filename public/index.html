@@ -47,6 +47,23 @@
         Prompt
         <textarea id="input-prompt" rows="6" placeholder="What should Claude work on?" required></textarea>
       </label>
+      <div id="dialog-context" class="context-panel" hidden>
+        <button type="button" class="context-toggle" id="dialog-context-toggle">Project Context</button>
+        <div class="context-body" id="dialog-context-body" hidden>
+          <div class="context-section" id="dialog-claude-md-section" hidden>
+            <h4>CLAUDE.md</h4>
+            <pre class="context-pre" id="dialog-claude-md"></pre>
+          </div>
+          <div class="context-section" id="dialog-skills-section">
+            <h4>Skills</h4>
+            <ul class="context-skills" id="dialog-skills"></ul>
+          </div>
+          <div class="context-section" id="dialog-config-section">
+            <h4>Config</h4>
+            <p class="dim" id="dialog-config"></p>
+          </div>
+        </div>
+      </div>
       <div class="dialog-actions">
         <button type="button" id="cancel-btn">Cancel</button>
         <button type="submit">Launch</button>

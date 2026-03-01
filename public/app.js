@@ -14,6 +14,7 @@ const cancelBtn = document.getElementById("cancel-btn");
 let sessions = [];
 let activeId = null;
 let outputBuffers = {};
+let currentContext = null;
 
 // WebSocket
 const ws = new WebSocket(`ws://${location.host}/ws`);
@@ -123,9 +124,29 @@ async function loadProjects() {
 
 loadProjects();
 
+const inputDir = document.getElementById("input-dir");
+inputDir.onchange = async () => {
+  const path = inputDir.value;
+  if (!path) return;
+  const name = path.split("/").pop();
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(name)}/context`);
+    currentContext = await res.json();
+    renderDialogContext(currentContext);
+  } catch {
+    currentContext = null;
+    document.getElementById("dialog-context").hidden = true;
+  }
+};
+
 // New session
 newBtn.onclick = () => newDialog.showModal();
-cancelBtn.onclick = () => newDialog.close();
+cancelBtn.onclick = () => {
+  newDialog.close();
+  currentContext = null;
+  document.getElementById("dialog-context").hidden = true;
+  document.getElementById("dialog-context-body").hidden = true;
+};
 newDialog.onclick = (e) => {
   if (e.target === newDialog) newDialog.close();
 };
@@ -138,7 +159,7 @@ newForm.onsubmit = async (e) => {
   const res = await fetch("/api/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectDir, prompt }),
+    body: JSON.stringify({ projectDir, prompt, context: currentContext }),
   });
 
   const session = await res.json();
@@ -152,6 +173,9 @@ newForm.onsubmit = async (e) => {
   selectSession(session.id);
   newDialog.close();
   newForm.reset();
+  currentContext = null;
+  document.getElementById("dialog-context").hidden = true;
+  document.getElementById("dialog-context-body").hidden = true;
 };
 
 // Kill session
@@ -159,6 +183,50 @@ killBtn.onclick = async () => {
   if (!activeId) return;
   await fetch(`/api/sessions/${activeId}`, { method: "DELETE" });
 };
+
+function renderDialogContext(ctx) {
+  const panel = document.getElementById("dialog-context");
+  const body = document.getElementById("dialog-context-body");
+  const toggle = document.getElementById("dialog-context-toggle");
+
+  panel.hidden = false;
+
+  // CLAUDE.md
+  const mdSection = document.getElementById("dialog-claude-md-section");
+  const mdPre = document.getElementById("dialog-claude-md");
+  if (ctx.claudeMd) {
+    mdSection.hidden = false;
+    mdPre.textContent = ctx.claudeMd;
+  } else {
+    mdSection.hidden = true;
+  }
+
+  // Skills
+  const skillsList = document.getElementById("dialog-skills");
+  skillsList.innerHTML = "";
+  for (const s of ctx.skills) {
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>${escapeHtml(s.name)}</strong>`;
+    if (s.description) {
+      li.innerHTML += ` <span class="dim">${escapeHtml(s.description.slice(0, 100))}${s.description.length > 100 ? "..." : ""}</span>`;
+    }
+    skillsList.appendChild(li);
+  }
+
+  // Config
+  const configP = document.getElementById("dialog-config");
+  if (ctx.config.hooksCount > 0) {
+    configP.textContent = `${ctx.config.hooksCount} hooks: ${ctx.config.hooks.join(", ")}`;
+  } else {
+    configP.textContent = "No hooks configured";
+  }
+
+  // Toggle expand/collapse
+  toggle.onclick = () => {
+    body.hidden = !body.hidden;
+    toggle.textContent = body.hidden ? "Project Context" : "Project Context (collapse)";
+  };
+}
 
 // Helpers
 function escapeHtml(s) {
