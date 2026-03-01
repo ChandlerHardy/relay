@@ -62,6 +62,7 @@ async function loadSessions() {
     for (const s of data) {
       sessions.set(s.id, {
         ...s,
+        context: s.context ?? null,
         ptyProcess: null,
       });
     }
