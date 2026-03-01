@@ -11,8 +11,8 @@
 **Design doc:** `docs/plans/2026-02-28-agent-orchestration-design.md`
 
 **Reference patterns (from `~/.claude/dev-docs/design-patterns/`):**
-- `zai-anthropic-proxy.md` — z.ai is GLM (not real Claude) with Anthropic-compatible API. Use direct Anthropic API for PM orchestration quality; z.ai as optional cost-saving fallback.
-- `ai-model-fallback.md` — Fallback chain pattern from triagebox/chronicle. Apply simplified version: Anthropic Sonnet → z.ai GLM-4.7 → error.
+- `zai-anthropic-proxy.md` — z.ai serves GLM models via Anthropic-compatible API. Default provider since it's included in the z.ai coding subscription (no per-token cost). Direct Anthropic API as optional quality upgrade.
+- `ai-model-fallback.md` — Fallback chain pattern from triagebox/chronicle. Apply simplified version: z.ai GLM-4.7 (default) → Anthropic Sonnet (optional upgrade) → error.
 - `project-structure.md` — Flat monorepo pattern. Relay keeps single-server backend but gains structured `src/` frontend.
 
 ---
@@ -458,9 +458,9 @@ git commit -m "feat: add assignment types, persistence, session extensions"
 ```ts
 import Anthropic from "@anthropic-ai/sdk";
 
-// Provider chain: Real Anthropic (quality) → z.ai GLM (cost fallback)
-// IMPORTANT: z.ai serves GLM models, not real Claude. Anthropic is preferred
-// for PM orchestration where reasoning quality matters.
+// Provider chain: z.ai GLM (default, included in subscription) → Anthropic (optional quality upgrade)
+// z.ai serves GLM models via Anthropic-compatible API — no per-token cost since it uses
+// the z.ai coding plan. Direct Anthropic is available as a quality upgrade for complex tasks.
 interface AIProvider {
   name: string;
   client: Anthropic;
@@ -470,16 +470,7 @@ interface AIProvider {
 function buildProviderChain(): AIProvider[] {
   const providers: AIProvider[] = [];
 
-  // Primary: Direct Anthropic API (real Claude)
-  if (process.env.ANTHROPIC_API_KEY) {
-    providers.push({
-      name: "anthropic",
-      client: new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
-      model: "claude-sonnet-4-6",
-    });
-  }
-
-  // Fallback: z.ai proxy (GLM models with Anthropic-compatible API)
+  // Primary: z.ai proxy (GLM models, included in z.ai coding subscription)
   if (process.env.ZAI_API_KEY) {
     providers.push({
       name: "zai",
@@ -491,8 +482,17 @@ function buildProviderChain(): AIProvider[] {
     });
   }
 
+  // Optional fallback: Direct Anthropic API (real Claude, per-token cost)
+  if (process.env.ANTHROPIC_API_KEY) {
+    providers.push({
+      name: "anthropic",
+      client: new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
+      model: "claude-sonnet-4-6",
+    });
+  }
+
   if (providers.length === 0) {
-    throw new Error("No AI provider configured. Set ANTHROPIC_API_KEY or ZAI_API_KEY.");
+    throw new Error("No AI provider configured. Set ZAI_API_KEY or ANTHROPIC_API_KEY.");
   }
 
   return providers;
@@ -585,7 +585,7 @@ ANTHROPIC_API_KEY=... node -e "
 
 ```bash
 git add ai-client.ts orchestrator.ts prompts.ts
-git commit -m "feat: add orchestration engine with AI fallback chain (Anthropic → z.ai)"
+git commit -m "feat: add orchestration engine with AI fallback chain (z.ai → Anthropic)"
 ```
 
 ---
@@ -929,18 +929,18 @@ git commit -m "feat: complete P3 agent orchestration with assignment badges and 
 
 **AI provider env vars (at least one required):**
 ```bash
-# Primary: Direct Anthropic API (real Claude — preferred for PM quality)
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-# Fallback: z.ai proxy (GLM models, cheaper but lower quality)
+# Primary: z.ai proxy (GLM models, included in z.ai coding subscription — no extra cost)
 # See ~/.claude/dev-docs/design-patterns/zai-anthropic-proxy.md
 export ZAI_API_KEY="your-zai-key"
+
+# Optional: Direct Anthropic API (real Claude, per-token cost — quality upgrade)
+export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 **Provider chain behavior:**
-- If both set: tries Anthropic first, falls back to z.ai on error
-- If only `ANTHROPIC_API_KEY`: uses direct Anthropic (recommended)
-- If only `ZAI_API_KEY`: uses z.ai GLM models (adequate for simple tasks)
+- If both set: tries z.ai first, falls back to Anthropic on error
+- If only `ZAI_API_KEY`: uses z.ai GLM models (recommended — no extra cost)
+- If only `ANTHROPIC_API_KEY`: uses direct Anthropic (per-token billing)
 - If neither: server starts but assignment creation will fail with error
 
 **Dev workflow (two terminals):**
