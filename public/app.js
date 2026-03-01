@@ -107,6 +107,8 @@ function renderSession() {
   sessionOutput.scrollTop = sessionOutput.scrollHeight;
 
   killBtn.hidden = s.status !== "running";
+
+  renderSessionContext(s.context);
 }
 
 // Load projects into dropdown
@@ -228,6 +230,61 @@ function renderDialogContext(ctx) {
   toggle.onclick = () => {
     body.hidden = !body.hidden;
     toggle.textContent = body.hidden ? "Project Context" : "Project Context (collapse)";
+  };
+}
+
+function renderSessionContext(ctx) {
+  const panel = document.getElementById("session-context");
+  const body = document.getElementById("session-context-body");
+  const toggle = document.getElementById("session-context-toggle");
+
+  if (!ctx) {
+    panel.hidden = true;
+    return;
+  }
+
+  panel.hidden = false;
+
+  // Summary line
+  const parts = [];
+  if (ctx.claudeMd) parts.push("CLAUDE.md");
+  parts.push(`${ctx.skills.length} skills`);
+  if (ctx.config.hooksCount > 0) parts.push(`${ctx.config.hooksCount} hooks`);
+  toggle.textContent = parts.join(" \u00b7 ");
+
+  // CLAUDE.md
+  const mdSection = document.getElementById("session-claude-md-section");
+  const mdPre = document.getElementById("session-claude-md");
+  if (ctx.claudeMd) {
+    mdSection.hidden = false;
+    mdPre.textContent = ctx.claudeMd;
+  } else {
+    mdSection.hidden = true;
+  }
+
+  // Skills
+  const skillsList = document.getElementById("session-skills");
+  skillsList.innerHTML = "";
+  for (const s of ctx.skills) {
+    const li = document.createElement("li");
+    li.innerHTML = `<strong>${escapeHtml(s.name)}</strong>`;
+    if (s.description) {
+      li.innerHTML += ` <span class="dim">${escapeHtml(s.description.slice(0, 100))}${s.description.length > 100 ? "..." : ""}</span>`;
+    }
+    skillsList.appendChild(li);
+  }
+
+  // Config
+  const configP = document.getElementById("session-config");
+  if (ctx.config.hooksCount > 0) {
+    configP.textContent = `${ctx.config.hooksCount} hooks: ${ctx.config.hooks.join(", ")}`;
+  } else {
+    configP.textContent = "No hooks configured";
+  }
+
+  // Toggle expand/collapse
+  toggle.onclick = () => {
+    body.hidden = !body.hidden;
   };
 }
 

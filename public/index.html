@@ -29,6 +29,23 @@
           <button id="kill-btn" class="danger" title="Kill Session">Stop</button>
         </div>
         <div id="session-prompt"></div>
+        <div id="session-context" class="context-panel" hidden>
+          <button class="context-toggle" id="session-context-toggle"></button>
+          <div class="context-body" id="session-context-body" hidden>
+            <div class="context-section" id="session-claude-md-section" hidden>
+              <h4>CLAUDE.md</h4>
+              <pre class="context-pre" id="session-claude-md"></pre>
+            </div>
+            <div class="context-section" id="session-skills-section">
+              <h4>Skills</h4>
+              <ul class="context-skills" id="session-skills"></ul>
+            </div>
+            <div class="context-section" id="session-config-section">
+              <h4>Config</h4>
+              <p class="dim" id="session-config"></p>
+            </div>
+          </div>
+        </div>
         <pre id="session-output"></pre>
       </div>
     </main>
