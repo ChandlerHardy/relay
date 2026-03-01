@@ -5,7 +5,11 @@ import { homedir } from "os";
 import { randomUUID } from "crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
-import { loadAssignments } from "./assignments.ts";
+import {
+  loadAssignments, saveAssignments, createAssignment as makeAssignment,
+  getAssignment, getAllAssignments, getEligibleTasks,
+} from "./assignments.ts";
+import { planAssignment, evaluateSession, summarizeAssignment, buildTaskPrompt } from "./orchestrator.ts";
 
 const PORT = 3847;
 const REPOS_DIR = join(homedir(), "repos");
@@ -237,11 +241,113 @@ function createSession(projectDir: string, prompt: string, context: ProjectConte
       exitCode,
     });
     saveSessions();
+
+    // If this session belongs to an assignment, evaluate it
+    if (session.assignmentId && session.taskId) {
+      handleSessionCompletion(session).catch(err =>
+        console.error("[orchestrator] handleSessionCompletion error:", err)
+      );
+    }
   });
 
   sessions.set(id, session);
   saveSessions();
   return session;
+}
+
+// --- Assignment orchestration ---
+
+async function getProjectContext(projectDir: string): Promise<ProjectContext> {
+  let claudeMd: string | null = null;
+  try {
+    claudeMd = await readFile(join(projectDir, "CLAUDE.md"), "utf-8");
+  } catch {}
+  if (!cachedSkills) cachedSkills = await parseSkills();
+  if (!cachedConfig) cachedConfig = await parseConfig();
+  return { claudeMd, skills: cachedSkills, config: cachedConfig };
+}
+
+function broadcastAssignmentUpdate(assignment: ReturnType<typeof getAllAssignments>[number]) {
+  broadcast({ type: "assignment_update", assignment });
+}
+
+async function advanceAssignment(assignmentId: string) {
+  const assignment = getAssignment(assignmentId);
+  if (!assignment || assignment.status !== "active") return;
+
+  const eligible = getEligibleTasks(assignment);
+  const context = await getProjectContext(assignment.projectDir);
+
+  for (const task of eligible) {
+    task.status = "active";
+    const prompt = buildTaskPrompt(task);
+    const session = createSession(assignment.projectDir, prompt, context);
+    session.assignmentId = assignmentId;
+    session.taskId = task.id;
+    session.role = task.role;
+    task.sessionIds.push(session.id);
+  }
+
+  await saveAssignments();
+  await saveSessions();
+  broadcastAssignmentUpdate(assignment);
+}
+
+async function handleSessionCompletion(session: Session) {
+  const assignment = getAssignment(session.assignmentId!);
+  if (!assignment) return;
+
+  const task = assignment.tasks.find(t => t.id === session.taskId);
+  if (!task) return;
+
+  const output = session.output.join("");
+
+  try {
+    const result = await evaluateSession(task, output, assignment);
+
+    if (result.verdict === "pass") {
+      task.status = "completed";
+      task.evaluation = result.reasoning;
+    } else if (result.verdict === "retry" && task.retryCount < 2) {
+      task.status = "retrying";
+      task.retryCount++;
+      const retryPrompt = result.adjustedPrompt || buildTaskPrompt(task);
+      const context = await getProjectContext(assignment.projectDir);
+      const newSession = createSession(assignment.projectDir, retryPrompt, context);
+      newSession.assignmentId = assignment.id;
+      newSession.taskId = task.id;
+      newSession.role = task.role;
+      task.sessionIds.push(newSession.id);
+    } else {
+      task.status = "failed";
+      task.evaluation = result.reasoning;
+    }
+  } catch (err) {
+    console.error("[orchestrator] evaluation failed:", err);
+    // If evaluation itself fails, mark based on exit code
+    task.status = session.exitCode === 0 ? "completed" : "failed";
+    task.evaluation = "Evaluation unavailable";
+  }
+
+  // Check assignment completion
+  const allDone = assignment.tasks.every(t => t.status === "completed");
+  const anyFailed = assignment.tasks.some(t => t.status === "failed");
+
+  if (allDone) {
+    try {
+      assignment.summary = await summarizeAssignment(assignment);
+    } catch {
+      assignment.summary = "Assignment completed.";
+    }
+    assignment.status = "completed";
+    assignment.completedAt = new Date().toISOString();
+  } else if (!anyFailed) {
+    await advanceAssignment(assignment.id);
+  }
+  // If some tasks failed but others can still proceed, advanceAssignment handles it
+
+  await saveAssignments();
+  broadcastAssignmentUpdate(assignment);
 }
 
 const MIME: Record<string, string> = {
@@ -354,6 +460,150 @@ const httpServer = createServer(async (req, res) => {
     saveSessions();
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // API: list assignments
+  if (url.pathname === "/api/assignments" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(getAllAssignments()));
+    return;
+  }
+
+  // API: create assignment
+  if (url.pathname === "/api/assignments" && req.method === "POST") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const parsed = JSON.parse(body) as {
+      goal?: string;
+      projectDir?: string;
+      autonomyLevel?: "autonomous" | "available";
+    };
+    if (!parsed.goal || !parsed.projectDir) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "goal and projectDir required" }));
+      return;
+    }
+    const assignment = makeAssignment(
+      parsed.goal,
+      parsed.projectDir,
+      parsed.autonomyLevel ?? "autonomous",
+    );
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(assignment));
+
+    // Async: plan and start the assignment
+    (async () => {
+      try {
+        const context = await getProjectContext(assignment.projectDir);
+        assignment.tasks = await planAssignment(assignment, context);
+        assignment.status = "active";
+        await saveAssignments();
+        broadcastAssignmentUpdate(assignment);
+        await advanceAssignment(assignment.id);
+      } catch (err) {
+        console.error("[orchestrator] planning failed:", err);
+        assignment.status = "failed";
+        await saveAssignments();
+        broadcastAssignmentUpdate(assignment);
+      }
+    })();
+    return;
+  }
+
+  // API: get assignment detail
+  const assignmentDetailMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
+  if (assignmentDetailMatch && req.method === "GET") {
+    const assignment = getAssignment(assignmentDetailMatch[1]);
+    if (!assignment) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(assignment));
+    return;
+  }
+
+  // API: cancel assignment
+  if (assignmentDetailMatch && req.method === "DELETE") {
+    const assignment = getAssignment(assignmentDetailMatch[1]);
+    if (!assignment) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    assignment.status = "failed";
+    // Kill any running sessions for this assignment
+    for (const task of assignment.tasks) {
+      if (task.status === "active") {
+        task.status = "failed";
+        for (const sid of task.sessionIds) {
+          const s = sessions.get(sid);
+          if (s?.ptyProcess) s.ptyProcess.kill();
+        }
+      }
+    }
+    await saveAssignments();
+    broadcastAssignmentUpdate(assignment);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // API: toggle autonomy level
+  const autonomyMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/autonomy$/);
+  if (autonomyMatch && req.method === "PATCH") {
+    const assignment = getAssignment(autonomyMatch[1]);
+    if (!assignment) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const parsed = JSON.parse(body) as { autonomyLevel?: "autonomous" | "available" };
+    if (parsed.autonomyLevel) {
+      assignment.autonomyLevel = parsed.autonomyLevel;
+      await saveAssignments();
+      broadcastAssignmentUpdate(assignment);
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(assignment));
+    return;
+  }
+
+  // API: resolve a decision
+  const decisionMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/decisions\/([^/]+)$/);
+  if (decisionMatch && req.method === "POST") {
+    const assignment = getAssignment(decisionMatch[1]);
+    if (!assignment) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    const decision = assignment.decisions.find(d => d.id === decisionMatch[2]);
+    if (!decision) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "decision not found" }));
+      return;
+    }
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const parsed = JSON.parse(body) as { resolution?: string };
+    if (!parsed.resolution) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "resolution required" }));
+      return;
+    }
+    decision.status = "resolved";
+    decision.resolution = parsed.resolution;
+    decision.resolvedBy = "user";
+    decision.resolvedAt = new Date().toISOString();
+    await saveAssignments();
+    broadcastAssignmentUpdate(assignment);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(assignment));
     return;
   }
 
