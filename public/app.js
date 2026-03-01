@@ -141,11 +141,15 @@ inputDir.onchange = async () => {
 
 // New session
 newBtn.onclick = () => newDialog.showModal();
-cancelBtn.onclick = () => {
-  newDialog.close();
+function resetContextPanel() {
   currentContext = null;
   document.getElementById("dialog-context").hidden = true;
   document.getElementById("dialog-context-body").hidden = true;
+}
+
+cancelBtn.onclick = () => {
+  newDialog.close();
+  resetContextPanel();
 };
 newDialog.onclick = (e) => {
   if (e.target === newDialog) newDialog.close();
@@ -173,9 +177,7 @@ newForm.onsubmit = async (e) => {
   selectSession(session.id);
   newDialog.close();
   newForm.reset();
-  currentContext = null;
-  document.getElementById("dialog-context").hidden = true;
-  document.getElementById("dialog-context-body").hidden = true;
+  resetContextPanel();
 };
 
 // Kill session
@@ -222,6 +224,7 @@ function renderDialogContext(ctx) {
   }
 
   // Toggle expand/collapse
+  toggle.textContent = body.hidden ? "Project Context" : "Project Context (collapse)";
   toggle.onclick = () => {
     body.hidden = !body.hidden;
     toggle.textContent = body.hidden ? "Project Context" : "Project Context (collapse)";
