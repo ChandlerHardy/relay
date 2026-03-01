@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { Session, Project } from "./types";
-import { fetchSessions, fetchSessionOutput, fetchProjects } from "./lib/api";
+import type { Session, Project, Assignment } from "./types";
+import { fetchSessions, fetchSessionOutput, fetchProjects, fetchAssignments } from "./lib/api";
 
 interface RelayStore {
   // State
@@ -8,11 +8,15 @@ interface RelayStore {
   activeSessionId: string | null;
   outputBuffers: Record<string, string>;
   projects: Project[];
+  assignments: Assignment[];
+  activeAssignmentId: string | null;
 
   // Actions
   loadSessions: () => Promise<void>;
   loadProjects: () => Promise<void>;
+  loadAssignments: () => Promise<void>;
   selectSession: (id: string | null) => void;
+  selectAssignment: (id: string | null) => void;
   addSession: (session: Session) => void;
   addOutput: (sessionId: string, data: string) => void;
   updateSessionStatus: (
@@ -20,6 +24,7 @@ interface RelayStore {
     status: string,
     exitCode: number | null,
   ) => void;
+  updateAssignment: (assignment: Assignment) => void;
 }
 
 export const useStore = create<RelayStore>((set, get) => ({
@@ -27,6 +32,8 @@ export const useStore = create<RelayStore>((set, get) => ({
   activeSessionId: null,
   outputBuffers: {},
   projects: [],
+  assignments: [],
+  activeAssignmentId: null,
 
   loadSessions: async () => {
     const sessions = await fetchSessions();
@@ -43,7 +50,14 @@ export const useStore = create<RelayStore>((set, get) => ({
     set({ projects });
   },
 
-  selectSession: (id) => set({ activeSessionId: id }),
+  loadAssignments: async () => {
+    const assignments = await fetchAssignments();
+    set({ assignments });
+  },
+
+  selectSession: (id) => set({ activeSessionId: id, activeAssignmentId: null }),
+
+  selectAssignment: (id) => set({ activeAssignmentId: id, activeSessionId: null }),
 
   addSession: (session) =>
     set((state) => ({
@@ -66,5 +80,12 @@ export const useStore = create<RelayStore>((set, get) => ({
           ? { ...s, status: status as Session["status"], exitCode }
           : s,
       ),
+    })),
+
+  updateAssignment: (assignment) =>
+    set((state) => ({
+      assignments: state.assignments.some((a) => a.id === assignment.id)
+        ? state.assignments.map((a) => (a.id === assignment.id ? assignment : a))
+        : [...state.assignments, assignment],
     })),
 }));

@@ -1,3 +1,5 @@
+import type { Assignment } from "../types";
+
 interface WSHandlers {
   onOutput: (sessionId: string, data: string) => void;
   onStatus: (
@@ -5,6 +7,7 @@ interface WSHandlers {
     status: string,
     exitCode: number | null,
   ) => void;
+  onAssignmentUpdate?: (assignment: Assignment) => void;
 }
 
 export function connectWebSocket(handlers: WSHandlers): WebSocket {
@@ -18,6 +21,9 @@ export function connectWebSocket(handlers: WSHandlers): WebSocket {
     }
     if (msg.type === "status") {
       handlers.onStatus(msg.sessionId, msg.status, msg.exitCode);
+    }
+    if (msg.type === "assignment_update" && handlers.onAssignmentUpdate) {
+      handlers.onAssignmentUpdate(msg.assignment);
     }
   };
 

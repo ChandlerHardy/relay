@@ -1,4 +1,4 @@
-import type { Session, Project, ProjectContext } from "../types";
+import type { Session, Project, ProjectContext, Assignment } from "../types";
 
 const BASE = ""; // Same origin in dev (Vite proxy), same server in prod
 
@@ -40,6 +40,62 @@ export async function fetchProjectContext(
 ): Promise<ProjectContext> {
   const res = await fetch(
     `${BASE}/api/projects/${encodeURIComponent(name)}/context`,
+  );
+  return res.json();
+}
+
+// Assignment API
+export async function fetchAssignments(): Promise<Assignment[]> {
+  const res = await fetch(`${BASE}/api/assignments`);
+  return res.json();
+}
+
+export async function fetchAssignment(id: string): Promise<Assignment> {
+  const res = await fetch(`${BASE}/api/assignments/${id}`);
+  return res.json();
+}
+
+export async function createAssignment(
+  goal: string,
+  projectDir: string,
+  autonomyLevel: "autonomous" | "available",
+): Promise<Assignment> {
+  const res = await fetch(`${BASE}/api/assignments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ goal, projectDir, autonomyLevel }),
+  });
+  return res.json();
+}
+
+export async function cancelAssignment(id: string): Promise<void> {
+  await fetch(`${BASE}/api/assignments/${id}`, { method: "DELETE" });
+}
+
+export async function toggleAutonomy(
+  id: string,
+  level: "autonomous" | "available",
+): Promise<Assignment> {
+  const res = await fetch(`${BASE}/api/assignments/${id}/autonomy`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ autonomyLevel: level }),
+  });
+  return res.json();
+}
+
+export async function resolveDecision(
+  assignmentId: string,
+  decisionId: string,
+  resolution: string,
+): Promise<Assignment> {
+  const res = await fetch(
+    `${BASE}/api/assignments/${assignmentId}/decisions/${decisionId}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resolution }),
+    },
   );
   return res.json();
 }
