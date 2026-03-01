@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import { readFile, readdir, writeFile, mkdir, stat } from "fs/promises";
+import { readFile, readdir, writeFile, mkdir } from "fs/promises";
 import { join, extname } from "path";
 import { homedir } from "os";
 import { randomUUID } from "crypto";
