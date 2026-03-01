@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import { readFile, readdir, writeFile, mkdir } from "fs/promises";
+import { readFile, readdir, writeFile, mkdir, stat } from "fs/promises";
 import { join, extname } from "path";
 import { homedir } from "os";
 import { randomUUID } from "crypto";
@@ -11,6 +11,8 @@ const REPOS_DIR = join(homedir(), "repos");
 const PUBLIC_DIR = join(import.meta.dirname, "public");
 const DATA_DIR = join(homedir(), ".relay");
 const SESSIONS_FILE = join(DATA_DIR, "sessions.json");
+const SKILLS_DIR = join(homedir(), ".claude", "skills");
+const SETTINGS_FILE = join(homedir(), ".claude", "settings.json");
 
 interface Session {
   id: string;
@@ -96,6 +98,58 @@ function stripAnsi(str: string): string {
     .replace(/\]0;[^\x07\x1b]*/g, "")
     .replace(/\]9;[^\x07\x1b]*/g, "");
 }
+
+interface SkillInfo {
+  name: string;
+  description: string;
+}
+
+async function parseSkills(): Promise<SkillInfo[]> {
+  try {
+    const entries = await readdir(SKILLS_DIR, { withFileTypes: true });
+    const skills: SkillInfo[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const name = entry.name;
+      let description = "";
+      try {
+        const files = await readdir(join(SKILLS_DIR, name));
+        const mdFile = files.find((f) => f.endsWith(".md"));
+        if (mdFile) {
+          const content = await readFile(join(SKILLS_DIR, name, mdFile), "utf-8");
+          const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          if (fmMatch) {
+            const descMatch = fmMatch[1].match(/^description:\s*(.+)$/m);
+            if (descMatch) description = descMatch[1].trim();
+          }
+        }
+      } catch {}
+      skills.push({ name, description });
+    }
+    return skills.sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
+interface ConfigSummary {
+  hooksCount: number;
+  hooks: string[];
+}
+
+async function parseConfig(): Promise<ConfigSummary> {
+  try {
+    const raw = await readFile(SETTINGS_FILE, "utf-8");
+    const settings = JSON.parse(raw);
+    const hooks = settings.hooks ? Object.keys(settings.hooks) : [];
+    return { hooksCount: hooks.length, hooks };
+  } catch {
+    return { hooksCount: 0, hooks: [] };
+  }
+}
+
+let cachedSkills: SkillInfo[] | null = null;
+let cachedConfig: ConfigSummary | null = null;
 
 function createSession(projectDir: string, prompt: string): Session {
   const id = randomUUID();
@@ -188,6 +242,29 @@ const httpServer = createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("[]");
     }
+    return;
+  }
+
+  // API: project context (CLAUDE.md, skills, config)
+  const contextMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/context$/);
+  if (contextMatch && req.method === "GET") {
+    const projectName = decodeURIComponent(contextMatch[1]);
+    const projectPath = join(REPOS_DIR, projectName);
+
+    let claudeMd: string | null = null;
+    try {
+      claudeMd = await readFile(join(projectPath, "CLAUDE.md"), "utf-8");
+    } catch {}
+
+    if (!cachedSkills) cachedSkills = await parseSkills();
+    if (!cachedConfig) cachedConfig = await parseConfig();
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      claudeMd,
+      skills: cachedSkills,
+      config: cachedConfig,
+    }));
     return;
   }
 
