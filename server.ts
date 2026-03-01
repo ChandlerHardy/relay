@@ -5,6 +5,7 @@ import { homedir } from "os";
 import { randomUUID } from "crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
+import { loadAssignments } from "./assignments.ts";
 
 const PORT = 3847;
 const REPOS_DIR = join(homedir(), "repos");
@@ -24,6 +25,9 @@ interface Session {
   createdAt: string;
   exitCode: number | null;
   context: ProjectContext | null;
+  assignmentId?: string;
+  taskId?: string;
+  role?: "research" | "implement" | "review";
 }
 
 const sessions = new Map<string, Session>();
@@ -38,6 +42,9 @@ interface PersistedSession {
   createdAt: string;
   exitCode: number | null;
   context: ProjectContext | null;
+  assignmentId?: string;
+  taskId?: string;
+  role?: "research" | "implement" | "review";
 }
 
 async function saveSessions() {
@@ -50,6 +57,9 @@ async function saveSessions() {
     createdAt: s.createdAt,
     exitCode: s.exitCode,
     context: s.context,
+    assignmentId: s.assignmentId,
+    taskId: s.taskId,
+    role: s.role,
   }));
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(SESSIONS_FILE, JSON.stringify(data, null, 2));
@@ -64,6 +74,9 @@ async function loadSessions() {
         ...s,
         context: s.context ?? null,
         ptyProcess: null,
+        assignmentId: s.assignmentId ?? undefined,
+        taskId: s.taskId ?? undefined,
+        role: s.role ?? undefined,
       });
     }
     console.log(`  loaded ${data.length} saved session(s)`);
@@ -91,6 +104,9 @@ function serializeSession(s: Session) {
     createdAt: s.createdAt,
     exitCode: s.exitCode,
     context: s.context,
+    assignmentId: s.assignmentId,
+    taskId: s.taskId,
+    role: s.role,
   };
 }
 
@@ -362,7 +378,8 @@ wss.on("connection", (ws) => {
   ws.on("close", () => wsClients.delete(ws));
 });
 
-loadSessions().then(() => {
+loadSessions().then(async () => {
+  await loadAssignments();
   httpServer.listen(PORT, () => {
     console.log(`  relay running at http://localhost:${PORT}\n`);
   });
