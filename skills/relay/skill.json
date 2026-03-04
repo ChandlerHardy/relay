@@ -1,0 +1,14 @@
+{
+  "name": "relay",
+  "description": "Orchestrate 13rac1 containers with injected context from project skills and dev-docs. Uses proactive-agent patterns for session tracking and iteration. Sends Telegram updates on progress.",
+  "metadata": {
+    "openclaw": {
+      "emoji": "🔀",
+      "telegram": {
+        "enable": true,
+        "updates": true,
+        "channel": "8412715352"
+      }
+    }
+  }
+}
