@@ -229,6 +229,32 @@ Better results, faster
 
 ---
 
+## Security Integration 🔒
+
+**Endor Labs MCP Server — Real-time Security Scanning**
+
+Relay now includes **automatic Endor Labs integration** for vulnerability scanning during AI-assisted coding.
+
+**What it does:**
+- Automatically installs Endor Labs MCP on first run
+- Injects security instructions into every task
+- Enables Claude Code to scan for:
+  - Dependency vulnerabilities (npm, pip, composer, go)
+  - Code security issues
+  - Accidentally committed secrets
+  - Malicious packages
+
+**Usage:**
+```bash
+relay --workdir ~/repos/myproject --task "Add express for HTTP"
+# Endor Labs automatically checks express for known vulnerabilities
+```
+
+**Cost:** FREE (Developer Edition)
+**Documentation:** See `docs/ENDORLABS_INTEGRATION.md`
+
+---
+
 ## Current Status
 
 ✅ **v0.1.0 — CLI Tool (Phase 1 Complete)**
@@ -239,6 +265,7 @@ Better results, faster
 - Claude Code orchestration
 - Prompt file support
 - Interactive mode
+- **Endor Labs security scanning** ✨
 
 **Next Steps (Phase 2):**
 - Background mode
@@ -250,4 +277,5 @@ Better results, faster
 
 *Part of the Hal Stack 🦞*
 *Created: 2026-03-03*
+*Updated: 2026-03-04 (Endor Labs integration)*
 *Author: Rook 🐦‍⬛*

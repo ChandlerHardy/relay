@@ -11,6 +11,7 @@ import (
 type Orchestrator struct {
 	projectPath  string
 	contextLoader *ContextLoader
+	endorLabs    *EndorLabsManager
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -18,16 +19,25 @@ func NewOrchestrator(projectPath string) *Orchestrator {
 	return &Orchestrator{
 		projectPath:  projectPath,
 		contextLoader: NewContextLoader(projectPath),
+		endorLabs:    NewEndorLabsManager(),
 	}
 }
 
 // RunTask executes a task in Claude Code with injected context
 func (o *Orchestrator) RunTask(task string, promptFile string, options ...string) error {
+	// Ensure Endor Labs MCP is installed
+	if err := o.endorLabs.EnsureInstalled(); err != nil {
+		fmt.Printf("⚠️  Warning: Could not install Endor Labs MCP: %v\n", err)
+	}
+
 	// Load context
 	context, err := o.contextLoader.LoadFullContext()
 	if err != nil {
 		return fmt.Errorf("failed to load context: %w", err)
 	}
+
+	// Add security instructions if Endor Labs is available
+	securityInstructions := o.endorLabs.GetSecurityInstructions()
 
 	// Read task from file or use string directly
 	var taskContent string
@@ -41,13 +51,15 @@ func (o *Orchestrator) RunTask(task string, promptFile string, options ...string
 		taskContent = task
 	}
 
-	// Build full prompt with context
+	// Build full prompt with context and security
 	fullPrompt := fmt.Sprintf(`%s
+
+%s
 
 # Task
 
 %s
-`, context, taskContent)
+`, context, securityInstructions, taskContent)
 
 	// Create temp file for prompt (avoids shell escaping issues)
 	tmpFile, err := os.CreateTemp("", "relay-task-*.txt")
@@ -88,6 +100,10 @@ func (o *Orchestrator) RunTask(task string, promptFile string, options ...string
 
 	if HasProjectSkills(o.projectPath) {
 		fmt.Printf("✅ Project skills loaded from .claude/skills/\n")
+	}
+
+	if o.endorLabs.IsInstalled() {
+		fmt.Printf("🔒 Endor Labs security scanning enabled\n")
 	}
 
 	// Run in foreground (interactive)
